@@ -1,138 +1,147 @@
+/*********
+  Membros: 
+  Grupo: Spectrum 
+  Turma: 4ECA
+  Repositório disponível em:   
+*********/
+
+/*
+ Observado durante experimento que o máximo gerado através da captação foi 49kWh, caso seja necessário criar uma lógica de %
+*/
+
+// Carregando Wi-Fi library
 #include <WiFi.h>
-#include <esp_spiffs.h>
-#include <ESPmDNS.h>
-#include <ESPAsyncWebServer.h>
-//#include <WebSocketServer.h>
 
-//Consts
-const char *ssid = "Shell_Recharge";
-const char *passwd = "R41z&nM3!";
-const int dns_port = 53;
-const int http_port = 80;
-const int ws_port = 8080;
-double x = 0.10;
+// Configurando rede local para servir aplicação
+const char* ssid     = "ESP32-Access-Point";
+const char* password = "123456789";
 
-//Global vars 
-AsyncWebServer server(80);
-//WebSocketServer webSocket = WebSocketsServer(8080);
-char msg_buf[10];
-float V, V2, I, P, Cash;
+//Tempo para recarga rápida
+const float Temp1 = 2000.00; 
+//Tempo para recarga completa
+const float Temp2 = 3500.00; 
 
-//WebSocket Activation Funcs
+//Variáveis para medir geração de energia no sistema
+float SV, SV2, SI, SP, SC, SC1, SC2; //S usado para denotar energia da célula fotovoltaica (energia solar)
+float BV, BV2, BI, BP, BC, BC1, BC2; //B usado para denotar energia da bateria
 
-void onWebScoketEvent(uint8_t client_num,
-                      WStype_t type,
-                      uint_t * payload,
-                      size_t lenght) {
-                        //WebSocket Event Type
-                        switch(type){
-                          case WStype_DISCONNECTED:
-                            Serial.printf("[%u] Disconected\n", client_num);
-                            break;
+// Configurando porta do webserver
+WiFiServer server(80);
 
-                          case WStype_CONNECTED:
-                          {
-                            IPAddress ip = webScoket.remoteIP(client_num);
-                            Serial.printf("[%u] Call from ", client_num);
-                            Serial.prinf(ip.toString());
-                            }
-                            break;
+// Criando cabeçalho http para monitorar requisições
+String header;
 
-                          case WStype_TEXT:
-                            Serial.printf("[%u] Payload ", client_num, payload);
-                            //Logic Ocus Pocus and break
-                            break;
-                          case WStype_BIN:
-                          case WStype_ERROR:
-                          case WStype_FRAGMENT_TEXT_START:
-                          case WStype_FRAGMENT_BIN_START:
-                          case WStype_FRAGMENT:
-                          case WStype_FRAGMENT_FIN:
-                          default:
-                            break;
-                        }
-                      }
+// Pinos GPIO que serão usados
+const int batPin = 33;
+const int solPin = 32;
 
-//Setting up webserver --> perhaps will need some more logic ocus pocus
-void onIndexRequest(AsyncWebServerRequest *request){
-  IPAddress remote_ip = request->client()->remoteIP();
-  Serial.println("[" + remote_ip.toString() +
-                  "] HTTP GET for" + request->url());
-  request->send(SPIFFS, "index.html", "text/html"); //HTML Callback
-}
-
-void onCSSRequest(AsyncWebServerRequest *request){
-  IPAddress remote_ip = request->client()->remoteIP();
-  Serial.println("[" + remote_ip.toString() +
-                  "] HTTP GET for" + request->url());
-  request->send(SPIFFS, "style.css", "text/css"); //CSS Callback (if needed)
-}
-
-void onNotFoundResponse(AsyncWebServerRequest *request){
-  IPAddress remote_ip = request->client()->remoteIP();
-  Serial.println("[" + remote_ip.toString() +
-                  "] HTTP GET for" + request->url());
-  request->send(404,"text/plain", "Need some help ?"); //Non existing page callback
-}
-
-//Stats function & Analog read 
-void CalculaBateria()
+//Sensoriamento e captação da energia disponível para recarga
+void CalcBat()
 {
-  V = map(analogRead(0), 0, 1023, 0, 24);
-  V2 = (5.00 * analogRead(0)) / 1023.00;
-  I = V2 / 1;
-  P = I * V;
+  BV = map(analogRead(batPin), 0, 4095, 0, 24); //Calcula tensão
+  BV2 = (5 * analogRead(batPin)) / 1023; //Calcula tensão e converte para obtensão da corrente
+  BI = BV2 / 1; //Calcula corrente
+  BP = BI * BV2; //Calcula potência 
+  BC1 = BI / Temp1; //Calculo de uso de capacidade de carga por tempo (Recarga Rápida)
+  BC2 = BI / Temp2; //Calculo de uso de capacidade de carga por tempo (Recarga Completa)
 }
 
-void CalculaFotoVolt()
+//Repetimos os cálculos anteriores para a captação do painel fotovoltaíco
+void CalcSol()
 {
-  V = map(analogRead(2), 0, 1023, 0, 24);
-  V2 = (5.00 * analogRead(3)) / 1023.00;
-  I = V2 / 1;
-  P = I * V;
-}
-
-void CalculaPreco()
-{
-  Cash = P * x;
+  SV = map(analogRead(solPin), 0, 4095, 0, 24);
+  SV2 = (5 * analogRead(solPin)) / 1023;
+  SI = SV2 / 1;
+  SP = SI * SV2;
+  SC1 = SI / Temp1; //Validar calculo
+  SC2 = SI / Temp2;
 }
 
 
 void setup() {
-  // put your setup code here, to run once:
-  //pinMode for the necessary atuation inside PoC
-
-  //Start Serial logging
+  // Configurando baud adequado para a comunicação serial (logs)
   Serial.begin(115200);
-
-  //File System reading check
-  if( !SPIFFS.begin()){
-      Serial.println("is Spiffs okay ?");
-      while(1);
-  }
-
-  //Starting Up Access Point
-  WiFi.softAP(ssid, passwd);
-
-  //Getting to know our own network
-  Serial.println("Starting checks\n");
-  Serial.println("AP: [good]\n");
-  Serial.printf("Ip Address: " WiFi.softAPIP());
-
-  //Kickstarting webserver 
-  server.on("/", HTTP_GET, onIndexRequest);
-  server.on("/style.css", HTTP_GET, onCSSRequest);
-  server.onNotFound(onNotFoundResponse);
-
-  //Kickstarting websockets 
-  webSocket.begin();
-  webSocket.onEvent(onWebScoketEvent);
+  // Iniciando webserver através de Access Point com rede restrita
+  Serial.print("Setting AP (Access Point)…");
+  WiFi.softAP(ssid, password);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  server.begin();
 }
 
-void loop() {
+void loop(){
 
-  CalculaBateria(); //Chama função para calcular disponibilidade das baterias
-  CalculaFotoVolt(); //Chama função para calcular disponibilidade das celulas fotovoltaicas
-  CalculaPreco(); //Calcula preço da recarga 
-  webSocket.loop()
+  // Porta configurada e aguardando conexão do cliente
+  WiFiClient client = server.available(); 
+  // Inicia captação dos valores via leitura analógica
+  CalcSol();
+  CalcBat();
+  // Valores são convertidos em string para exibição
+  String TSPC1 = String(SC1); //Caso necessário teste adicionar potência 
+  String TSPC2 = String(SC2);
+  String TBPC1 = String(BC1);
+  String TBPC2 = String(BC2);
+
+  if (client) {                             // If a new client connects,
+    Serial.println("New Client.");          // print a message out in the serial port
+    String currentLine = "";                // make a String to hold incoming data from the client
+    while (client.connected()) {            // loop while the client's connected
+      if (client.available()) {             // if there's bytes to read from the client,
+        char c = client.read();             // read a byte, then
+        Serial.write(c);                    // print it out the serial monitor
+        header += c;
+        if (c == '\n') {                    // if the byte is a newline character
+          // if the current line is blank, you got two newline characters in a row.
+          // that's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // and a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK - Content-type:text/html - Connection: close");
+            client.println();
+            
+            // Display the HTML web page and adjusting to the reader device
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<meta http-equiv='refresh' content='30'>");
+            // Adding stylesheet (CSS) to the page
+            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
+            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
+            //Creating progress bar for measuring energy
+            client.println(".container { background-color: rgb(192, 192, 192); width: 80%; border-radius: 15px; }");
+            client.println(".aaa{ background-color: rgb(116, 194, 92); color: white; padding: 1%; text-align: right; font-size: 20px; border-radius: 15px;}");
+            client.println(".aa { width: "+ TBPC1 + "px; }");
+            client.println(".bb { width: "+ TSPC1+ " px; }");
+            client.println(".button2 {background-color: #555555;}</style></head>");
+            // Web Page Heading
+            client.println("<body><h1>Shell Recharge</h1>");
+            
+            // Display current statistics for the energy 
+            client.println("<p>Carga Bateria" + TBPC1 + " kW/h</p>");
+            client.println("<div class='container'> <div class='aaa aa'>" + TBPC1 + " </div> </div>"); //Probs variable for x% will be needed
+            client.println("<p>Carga Painel Solar" + TSPC1 + " kW/h</p>");
+            client.println("<div class='container'> <div class='aaa bb'>" + TSPC1 + "</div> </div>"); 
+            client.println("<button class='button'>Recarga Rapida</button>");
+            client.println("<button class='button'>Recarga Completa</button>");
+            client.println("</body></html>");
+            // The HTTP response ends with another blank line
+            client.println();
+            // Break out of the while loop
+            break;
+          } else { // if you got a newline, then clear currentLine
+            currentLine = "";
+          }
+        } else if (c != '\r') {  // if you got anything else but a carriage return character,
+          currentLine += c;      // add it to the end of the currentLine
+        }
+      }
+    }
+    // Limpa o cabeçalho http enviado para o servidor
+    header = "";
+    // Encerra a conexão
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+  }
 }
