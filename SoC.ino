@@ -1,13 +1,22 @@
 /*********
   Membros: 
+  Bruno Gois Costa -RM 82924 
+  Marcos Paulo Amaro dos Santos - RM82379 
+  Nathália Kimura Yonezawa - RM 82545 
+  Pedro Romero Pereira - RM81895
+
   Grupo: Spectrum 
   Turma: 4ECA
   Repositório disponível em:   
-*********/
 
-/*
- Observado durante experimento que o máximo gerado através da captação foi 49kWh, caso seja necessário criar uma lógica de %
-*/
+  Informações sobre a captação de energia que serão usados para funções deste programa: 
+
+  Tensão de circuito aberto (Voc): 7,4 V
+  Corrente de curto-circuito (Isc): 1,2 A
+  Potência máxima (Pmax): 2,3 W
+  Tensão na potência máxima (Vmp): 5,6 V
+  Corrente na potência máxima (Imp): 410 mA
+*********/
 
 // Carregando Wi-Fi library
 #include <WiFi.h>
@@ -16,15 +25,15 @@
 const char* ssid     = "ESP32-Access-Point";
 const char* password = "123456789";
 
-//Tempo para recarga rápida
-const float Temp1 = 1200.00; //20 minutos em segundos 
-//Tempo para recarga completa
-const float Temp2 = 2100.00; // 35 minutos em segundos
+//Tempo para recarga rápida 20 minutos em segundos 
+const float Temp1 = 1200.00; 
+//Tempo para recarga completa 35 minutos em segundos
+const float Temp2 = 2100.00; 
 
 //Variáveis para medir geração de energia no sistema
 float SV, SV2, SI, SP, SC, SC1, SC2; //S usado para denotar energia da célula fotovoltaica (energia solar)
 float BV, BV2, BI, BP, BC, BC1, BC2; //B usado para denotar energia da bateria
-
+float TempMed;
 // Configurando porta do webserver
 WiFiServer server(80);
 
@@ -38,23 +47,26 @@ const int solPin = 32;
 //Sensoriamento e captação da energia disponível para recarga
 void CalcBat()
 {
-  BV = map(analogRead(batPin), 0, 1023, 0, 24); //Calcula tensão
+  BV = map(analogRead(batPin), 0, 1023, 0, 7); //Calcula tensão
   BV2 = (5 * analogRead(batPin)) / 1023; //Calcula tensão e converte para obtensão da corrente
-  BI = BV2 / 1; //Calcula corrente
+  BI = BV2 / 100; //Calcula corrente
   BP = BI * BV2; //Calcula potência 
-  BC1 = BI * Temp1 * 0.01; //Calculo de uso de capacidade de carga por tempo (Recarga Rápida)
-  BC2 = BI * Temp2 * 0.01; //Calculo de uso de capacidade de carga por tempo (Recarga Completa)
+  TempMed = (Temp1 + Temp2)/2;
+  BC = BI * TempMed  * 0.1; //Calculo de uso de capacidade de carga por tempo médio 
+  //BC2 = BI * Temp2 * 0.01; --> Habilitar caso cálculo esteja sendo feito via circuito em paralelo 
 }
 
 //Repetimos os cálculos anteriores para a captação do painel fotovoltaíco
 void CalcSol()
 {
-  SV = map(analogRead(solPin), 0, 1023, 0, 24);
+  SV = map(analogRead(solPin), 0, 1023, 0, 7);
   SV2 = (5 * analogRead(solPin)) / 1023;
-  SI = SV2 / 1;
+  SI = SV2 / 100; //Converte para miliampere
   SP = SI * SV2;
-  SC1 = SI * Temp1 * 0.01; //Validar calculo
-  SC2 = SI * Temp2 * 0.01;
+  TempMed = (Temp1 + Temp2)/2;
+  SC = SI * TempMed * 0.1; //Validar calculo
+  //SC2 = SI * Temp2 * 0.01;  --> Habilitar caso cálculo esteja sendo feito via circuito em paralelo 
+  
 }
 
 void setup() {
@@ -77,10 +89,6 @@ void loop(){
   CalcSol();
   CalcBat();
   // Valores são convertidos em string para exibição
-  String TSPC1 = String(SC1); 
-  String TSPC2 = String(SC2);
-  String TBPC1 = String(BC1);
-  String TBPC2 = String(BC2);
 
   if (client) {                             // If a new client connects,
     Serial.println("New Client.");          // print a message out in the serial port
@@ -104,31 +112,26 @@ void loop(){
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<meta http-equiv='refresh' content='30'>");
             // Adding stylesheet (CSS) to the page
-            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
+            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center; }");
             client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
             //Criando uma barra de progresso para indicar a carga
             client.println(".container { background-color: rgb(192, 192, 192); width: 80%; border-radius: 15px; }");
-            client.println(".aaa{ background-color: rgb(116, 194, 92); color: white; padding: 1%; text-align: center; font-size: 20px; border-radius: 15px;}");
-            client.println(".aa { width: "+ TBPC1 + "px; }");
-            client.println(".bb { width: "+ TSPC1 + "px; }");
+            client.println(".PB { background-color: rgb(116, 194, 92); color: white; padding: 1%; text-align: center; font-size: 20px; border-radius: 15px;}");
+            client.println(".BSSPB { width: 75%; height: 80%; padding-left: 10%;}"); //BSSPB = Battery Style Sheet Progress Bar
+            client.println(".SSSPB { width: 75%; height: 80%; padding-left: 10%;}"); //SSSPB = Solar Style Sheet Progress Bar
+            client.println("</style>");
             // Título da página web
             client.println("<body><h1>Shell Recharge</h1>");
-            
             // Exibe a disponibilidade de carga com base nas funções de cálculo
-            client.println("<p>Carga Bateria" + TBPC1 + " kW/h</p>");
-            client.println("<div class='container'> <div class='aaa aa'>" + TBPC1 + " </div> </div>"); 
-            client.println("<p>Carga Painel Solar" + TSPC1 + " kW/h</p>");
-            client.println("<div class='container'> <div class='aaa bb'>" + TSPC1 + "</div> </div>"); 
-            client.println("<button class='button'>Recarga Rapida</button>");
-            client.println("<button class='button'>Recarga Completa</button>");
+            client.println("<p>Carga Bateria" + String(BC) + " kW/h</p>");
+            client.println("<div class='container'> <div class='PB BSSPB'>" + String(BC) + " </div> </div>"); 
+            client.println("<p>Carga Painel Solar" + String(SC) + " kW/h</p>");
+            client.println("<div class='container'> <div class='PB SSSPB'>" + String(SC) + "</div> </div>"); 
             client.println("<br></br>");
-            client.println("<br></br>");
-            client.println("<br></br>");
-            client.println("<h2>Medicao de energia fotovoltaica:</h2>");
-            client.println("<p>Tensao: "+ String(SV) +" Corrente: "+ String(SI) +" Potencia: "+ String(SP) +" </p>");
-            client.println("<h2>Medicao de energia na bateria:</h2>");
-            client.println("<p>Tensao: "+ String(BV) +" Corrente: "+ String(BI) +" Potencia: "+ String(BP) +" </p>");
+            client.println("<h2>Medicao de energia bateria:</h2>");
+            client.println("<p>Tensao: "+ String(BV) +"V Corrente: "+ String(BI) +"mA Potencia: "+ String(BP) +"W </p>");
+            client.println("<h2>Medicao de energia na fotovoltaica:</h2>");
+            client.println("<p>Tensao: "+ String(SV) +"V Corrente: "+ String(SI) +"mA Potencia: "+ String(SP) +"W </p>");
             client.println("</body></html>");
             // Termina a request com uma linha vazia
             client.println();
