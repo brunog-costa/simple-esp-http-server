@@ -17,9 +17,9 @@ const char* ssid     = "ESP32-Access-Point";
 const char* password = "123456789";
 
 //Tempo para recarga rápida
-const float Temp1 = 2000.00; 
+const float Temp1 = 1200.00; //20 minutos em segundos 
 //Tempo para recarga completa
-const float Temp2 = 3500.00; 
+const float Temp2 = 2100.00; // 35 minutos em segundos
 
 //Variáveis para medir geração de energia no sistema
 float SV, SV2, SI, SP, SC, SC1, SC2; //S usado para denotar energia da célula fotovoltaica (energia solar)
@@ -38,25 +38,24 @@ const int solPin = 32;
 //Sensoriamento e captação da energia disponível para recarga
 void CalcBat()
 {
-  BV = map(analogRead(batPin), 0, 4095, 0, 24); //Calcula tensão
+  BV = map(analogRead(batPin), 0, 1023, 0, 24); //Calcula tensão
   BV2 = (5 * analogRead(batPin)) / 1023; //Calcula tensão e converte para obtensão da corrente
   BI = BV2 / 1; //Calcula corrente
   BP = BI * BV2; //Calcula potência 
-  BC1 = BI / Temp1; //Calculo de uso de capacidade de carga por tempo (Recarga Rápida)
-  BC2 = BI / Temp2; //Calculo de uso de capacidade de carga por tempo (Recarga Completa)
+  BC1 = BI * Temp1 * 0.01; //Calculo de uso de capacidade de carga por tempo (Recarga Rápida)
+  BC2 = BI * Temp2 * 0.01; //Calculo de uso de capacidade de carga por tempo (Recarga Completa)
 }
 
 //Repetimos os cálculos anteriores para a captação do painel fotovoltaíco
 void CalcSol()
 {
-  SV = map(analogRead(solPin), 0, 4095, 0, 24);
+  SV = map(analogRead(solPin), 0, 1023, 0, 24);
   SV2 = (5 * analogRead(solPin)) / 1023;
   SI = SV2 / 1;
   SP = SI * SV2;
-  SC1 = SI / Temp1; //Validar calculo
-  SC2 = SI / Temp2;
+  SC1 = SI * Temp1 * 0.01; //Validar calculo
+  SC2 = SI * Temp2 * 0.01;
 }
-
 
 void setup() {
   // Configurando baud adequado para a comunicação serial (logs)
@@ -78,7 +77,7 @@ void loop(){
   CalcSol();
   CalcBat();
   // Valores são convertidos em string para exibição
-  String TSPC1 = String(SC1); //Caso necessário teste adicionar potência 
+  String TSPC1 = String(SC1); 
   String TSPC2 = String(SC2);
   String TBPC1 = String(BC1);
   String TBPC2 = String(BC2);
@@ -100,7 +99,7 @@ void loop(){
             client.println("HTTP/1.1 200 OK - Content-type:text/html - Connection: close");
             client.println();
             
-            // Display the HTML web page and adjusting to the reader device
+            // Iniciando o documento HTTP exibido via Access Point
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<meta http-equiv='refresh' content='30'>");
@@ -108,32 +107,38 @@ void loop(){
             client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
             client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
             client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            //Creating progress bar for measuring energy
+            //Criando uma barra de progresso para indicar a carga
             client.println(".container { background-color: rgb(192, 192, 192); width: 80%; border-radius: 15px; }");
-            client.println(".aaa{ background-color: rgb(116, 194, 92); color: white; padding: 1%; text-align: right; font-size: 20px; border-radius: 15px;}");
+            client.println(".aaa{ background-color: rgb(116, 194, 92); color: white; padding: 1%; text-align: center; font-size: 20px; border-radius: 15px;}");
             client.println(".aa { width: "+ TBPC1 + "px; }");
-            client.println(".bb { width: "+ TSPC1+ " px; }");
-            client.println(".button2 {background-color: #555555;}</style></head>");
-            // Web Page Heading
+            client.println(".bb { width: "+ TSPC1 + "px; }");
+            // Título da página web
             client.println("<body><h1>Shell Recharge</h1>");
             
-            // Display current statistics for the energy 
+            // Exibe a disponibilidade de carga com base nas funções de cálculo
             client.println("<p>Carga Bateria" + TBPC1 + " kW/h</p>");
-            client.println("<div class='container'> <div class='aaa aa'>" + TBPC1 + " </div> </div>"); //Probs variable for x% will be needed
+            client.println("<div class='container'> <div class='aaa aa'>" + TBPC1 + " </div> </div>"); 
             client.println("<p>Carga Painel Solar" + TSPC1 + " kW/h</p>");
             client.println("<div class='container'> <div class='aaa bb'>" + TSPC1 + "</div> </div>"); 
             client.println("<button class='button'>Recarga Rapida</button>");
             client.println("<button class='button'>Recarga Completa</button>");
+            client.println("<br></br>");
+            client.println("<br></br>");
+            client.println("<br></br>");
+            client.println("<h2>Medicao de energia fotovoltaica:</h2>");
+            client.println("<p>Tensao: "+ String(SV) +" Corrente: "+ String(SI) +" Potencia: "+ String(SP) +" </p>");
+            client.println("<h2>Medicao de energia na bateria:</h2>");
+            client.println("<p>Tensao: "+ String(BV) +" Corrente: "+ String(BI) +" Potencia: "+ String(BP) +" </p>");
             client.println("</body></html>");
-            // The HTTP response ends with another blank line
+            // Termina a request com uma linha vazia
             client.println();
-            // Break out of the while loop
+            // Fim do loop
             break;
-          } else { // if you got a newline, then clear currentLine
+          } else { // Se receber uma nova linha, esvazia a linha atual
             currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
+          } //Retorno do ponteiro
+        } else if (c != '\r') {  
+          currentLine += c;      
         }
       }
     }
@@ -145,3 +150,5 @@ void loop(){
     Serial.println("");
   }
 }
+
+
