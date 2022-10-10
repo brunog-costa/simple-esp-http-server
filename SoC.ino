@@ -7,7 +7,7 @@
 
   Grupo: Spectrum 
   Turma: 4ECA
-  Repositório disponível em:   
+  Repositório disponível em:   https://github.com/BrunoCosta1303/Ra-zenCup2022
 
   Informações sobre a captação de energia que serão usados para funções deste programa: 
 
