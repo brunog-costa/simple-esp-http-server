@@ -1,16 +1,8 @@
 /*********
-  Membros: 
-  Bruno Gois Costa -RM 82924 
-  Marcos Paulo Amaro dos Santos - RM82379 
-  Nathália Kimura Yonezawa - RM 82545 
-  Pedro Romero Pereira - RM81895
-
-  Grupo: Spectrum 
-  Turma: 4ECA
-  Repositório disponível em:   https://github.com/BrunoCosta1303/Ra-zenCup2022
-
+  Autor: 
+  Bruno Gois Costa
+  
   Informações sobre a captação de energia que serão usados para funções deste programa: 
-
   Tensão de circuito aberto (Voc): 7,4 V
   Corrente de curto-circuito (Isc): 1,2 A
   Potência máxima (Pmax): 2,3 W
